@@ -1,0 +1,12 @@
+mediapipe==0.10.14  # keo theo opencv-contrib-python (cv2)
+pyserial>=3.5
+numpy<2
+certifi
+# Mo hinh tuoi MiVOLO v2 (Mac Intel: torch moi nhat co ban dung san la 2.2.2)
+torch==2.2.2
+transformers==4.51.0
+accelerate==1.8.1
+timm==0.8.13.dev0   # MiVOLO can dung ban nay
+setuptools<81       # MiVOLO can pkg_resources khi cai
+# Sau khi cai cac goi tren, cai MiVOLO rieng:
+#   pip install --no-deps --no-build-isolation "git+https://github.com/WildChlamydia/MiVOLO.git"
