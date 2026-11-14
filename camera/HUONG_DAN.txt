@@ -1,0 +1,25 @@
+HỆ THỐNG CẢNH BÁO NGỦ GẬT - HƯỚNG DẪN CHẠY
+
+Yêu cầu
+- Máy tính có webcam, Windows 10/11 hoặc macOS hoặc Linux.
+- Python 3.10 (tải tại https://www.python.org/downloads/ ; trên Windows nhớ tích
+  "Add python.exe to PATH" khi cài).
+- Internet cho lần chạy đầu tiên (tải thư viện khoảng 1-2 GB).
+- ESP32 đã nạp sẵn chương trình (cắm USB). Không có ESP32 thì vẫn chạy được phần camera.
+
+Chạy (chỉ 1 lệnh)
+- Windows: nháy đúp file start.bat
+- macOS / Linux: mở Terminal trong thư mục này và gõ
+      ./start.sh
+
+Lần đầu chương trình tự cài đặt (5-15 phút tùy mạng), các lần sau mở ngay.
+Cửa sổ "Canh bao ngu gat" hiện hình camera kèm thông tin mắt, nhịp tim và mức cảnh báo.
+Lần đầu mở, máy có thể hỏi quyền dùng camera: chọn Cho phép.
+
+Dừng chương trình: nhấn phím q trong cửa sổ camera.
+
+Gặp lỗi
+- "Can Python 3.10 - 3.12": cài Python 3.10 rồi chạy lại.
+- Cài đặt bị ngắt giữa chừng: xóa thư mục .venv rồi chạy lại.
+- Khung cảm biến (góc dưới phải) báo "Chua ket noi ESP32": kiểm tra cáp USB, đóng các phần mềm khác
+  đang mở cổng Serial (Arduino, PlatformIO...) rồi chạy lại.

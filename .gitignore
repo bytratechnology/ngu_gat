@@ -4,7 +4,9 @@
 .vscode/launch.json
 .vscode/ipch
 
-# Mo hinh AI tai bang camera/download_models.py (giay phep khong cho phan phoi lai)
 camera/models/
 __pycache__/
 .DS_Store
+
+dist/
+.venv/

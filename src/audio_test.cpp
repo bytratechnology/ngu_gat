@@ -1,6 +1,3 @@
-// Test loa MAX98357A (I2S) + the nho Micro SD: phat lan luot cac file MP3.
-// Lenh qua Serial Monitor: n = bai tiep, b = bai truoc, 1..9 = chon bai,
-//                          p = tam dung/tiep tuc, + / - = am luong, l = liet ke
 #include <Arduino.h>
 #include <SPI.h>
 #include <SD.h>
@@ -9,18 +6,16 @@
 #include "AudioGeneratorMP3.h"
 #include "AudioOutputI2S.h"
 
-// MAX98357A
 #define I2S_BCLK 26
 #define I2S_LRC 25
 #define I2S_DIN 22
 
-// Micro SD (SPI)
 #define SD_SCK 18
 #define SD_MISO 19
 #define SD_MOSI 23
 #define SD_CS 5
 
-#define MUSIC_DIR "/AUDIO"   // Neu khong co thu muc nay thi tim o goc the
+#define MUSIC_DIR "/AUDIO"
 #define MAX_TRACKS 20
 
 AudioGeneratorMP3 *mp3 = nullptr;
@@ -31,13 +26,12 @@ AudioOutputI2S *out = nullptr;
 String tracks[MAX_TRACKS];
 int trackCount = 0;
 int current = 0;
-float volume = 0.3;          // 0.0 - 4.0; MAX98357A kha to, bat dau nho
+float volume = 0.3;
 bool paused = false;
 
 bool isMp3(const String &name) {
   String lower = name;
   lower.toLowerCase();
-  // Bo file an "._xxx.mp3" do macOS tao ra khi chep vao the
   return lower.endsWith(".mp3") && !lower.startsWith("._");
 }
 
@@ -77,7 +71,7 @@ void playTrack(int index) {
   Serial.printf("> Phat %d/%d: %s\n", current + 1, trackCount,
                 tracks[current].c_str());
   file = new AudioFileSourceSD(tracks[current].c_str());
-  buffer = new AudioFileSourceBuffer(file, 4096);  // Dem tranh vap tieng khi doc SD
+  buffer = new AudioFileSourceBuffer(file, 4096);
   mp3 = new AudioGeneratorMP3();
   if (!mp3->begin(buffer, out)) {
     Serial.println("  Loi giai ma file, chuyen bai");

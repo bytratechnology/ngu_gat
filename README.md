@@ -2,7 +2,7 @@
 
 Phát hiện tài xế buồn ngủ bằng webcam (mắt, ngáp, cúi đầu) kết hợp cảm biến nhịp tim/SpO2, rồi phát cảnh báo bằng giọng nói qua loa gắn trên ESP32.
 
-- **Máy tính (Python, thư mục `camera/`)**: MediaPipe Face Mesh theo dõi độ mở mắt (EAR), PERCLOS, ngáp (MAR), cúi đầu; quyết định 3 mức cảnh báo; hiển thị bằng cửa sổ hoặc trang web.
+- **Máy tính (Python, thư mục `camera/`)**: MediaPipe Face Mesh theo dõi độ mở mắt (EAR), PERCLOS, ngáp (MAR), cúi đầu; quyết định 3 mức cảnh báo; hiển thị bằng cửa sổ OpenCV.
 - **ESP32 (PlatformIO, thư mục `src/`)**: đọc MAX30102, hiển thị OLED, phát `warning1/2/3.mp3` từ thẻ nhớ qua MAX98357A.
 - Hai bên nói chuyện qua cáp USB (Serial, 115200 baud).
 
@@ -26,22 +26,22 @@ pio run -e audio_test -t upload -t monitor      # test riêng loa và thẻ nh�
 
 ## Chạy chương trình camera
 
-Thử trên macOS (Intel), Python 3.10:
+Cần Python 3.10 (3.9–3.12 đều được). Chạy bằng 1 lệnh:
 
 ```bash
-conda create -n drowsy-env python=3.10 && conda activate drowsy-env
 cd camera
-pip install -r requirements.txt
-pip install --no-deps --no-build-isolation "git+https://github.com/WildChlamydia/MiVOLO.git"
-python download_models.py
+./start.sh        # Windows: start.bat
+```
 
-python drowsy.py --port /dev/cu.usbserial-XXXX          # cửa sổ OpenCV, nhấn q để thoát
-python drowsy.py --port /dev/cu.usbserial-XXXX --web    # trang web http://localhost:8000
+Lần đầu `start.sh` / `start.bat` tự tạo môi trường `.venv`, cài `requirements.txt` và tải mô hình (`download_models.py`); sau đó mở cửa sổ camera (nhấn q để thoát) và tự dò cổng ESP32. Chạy thủ công (trong `.venv`):
+
+```bash
+python drowsy.py --port auto          # cửa sổ OpenCV, nhấn q để thoát
 ```
 
 Bỏ `--port` để chạy riêng camera. Khi chương trình camera đang chạy, phải tắt nó trước khi nạp lại ESP32 (cả hai cùng dùng cổng Serial).
 
-Mô hình MiVOLO (CC BY-NC 4.0) và InsightFace chỉ được dùng cho mục đích phi thương mại; file mô hình không nằm trong repo.
+`download_models.py` tải mô hình tuổi vào `camera/models/AgeModel` (tác giả Kuprashevich & Tolstykh, 2023, giấy phép CC BY-NC 4.0) và mô hình dự phòng InsightFace; cả hai chỉ được dùng cho mục đích phi thương mại, file mô hình không nằm trong repo.
 
 ## Mức cảnh báo
 
