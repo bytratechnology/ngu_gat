@@ -41,8 +41,6 @@ python drowsy.py --port auto          # cửa sổ OpenCV, nhấn q để thoát
 
 Bỏ `--port` để chạy riêng camera. Khi chương trình camera đang chạy, phải tắt nó trước khi nạp lại ESP32 (cả hai cùng dùng cổng Serial).
 
-`download_models.py` tải mô hình tuổi vào `camera/models/AgeModel` (tác giả Kuprashevich & Tolstykh, 2023, giấy phép CC BY-NC 4.0) và mô hình dự phòng InsightFace; cả hai chỉ được dùng cho mục đích phi thương mại, file mô hình không nằm trong repo.
-
 ## Mức cảnh báo
 
 | Mức | Điều kiện (chỉ cần một) | Âm thanh |
