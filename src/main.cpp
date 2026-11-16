@@ -4,15 +4,13 @@
 #include <SPI.h>
 #include <SD.h>
 #include <U8g2lib.h>
-#include "DFRobot_BloodOxygen_S.h"
+#include "sensor_link.h"
 #include "AudioFileSourceSD.h"
 #include "AudioFileSourceBuffer.h"
 #include "AudioGeneratorMP3.h"
 #include "AudioOutputI2S.h"
 
-#define SDA_PIN 21
-#define SCL_PIN 32
-#define I2C_ADDRESS 0x57
+#define LINK_TIMEOUT_MS 3000
 
 #define OLED_SDA_PIN 16
 #define OLED_SCL_PIN 17
@@ -45,7 +43,6 @@ const uint32_t REPEAT_GAP_MS[MAX_ALERT_LEVEL + 1] = {0, 0, 8000, 1500};
 #define MAX_SPO2_SPREAD 3
 #define MAX_CONSECUTIVE_REJECTS 3
 
-DFRobot_BloodOxygen_S_I2C MAX30102(&Wire, I2C_ADDRESS);
 
 U8G2_SH1106_128X64_NONAME_F_2ND_HW_I2C display(U8G2_R0, U8X8_PIN_NONE);
 
@@ -93,7 +90,10 @@ int rxLen = 0;
 
 bool sdReady = false;
 bool sensorReady = false;
-uint32_t lastSensorRetryMs = 0;
+volatile int16_t linkHr = -1;
+volatile int16_t linkSpo2 = -1;
+volatile bool linkSensorOk = false;
+volatile uint32_t lastLinkMs = 0;
 volatile int audioRequest = 0;
 volatile bool audioPlaying = false;
 uint32_t lastAudioEndMs = 0;
@@ -207,9 +207,10 @@ void pushSample(int hr, int spo2) {
 }
 
 void restartSensor() {
-  MAX30102.sensorEndCollect();
-  delay(100);
-  MAX30102.sensorStartCollect();
+  LinkPacket packet = {};
+  packet.magic = LINK_MAGIC;
+  packet.type = LINK_RESTART;
+  linkSend(packet);
   missedReadings = 0;
 }
 
@@ -603,31 +604,44 @@ void reportSensor() {
                 session.count);
 }
 
-#define SENSOR_RETRY_MS 2000
-void connectSensor() {
-  lastSensorRetryMs = millis();
-  sensorReady = MAX30102.begin();
-  if (!sensorReady) {
-    Serial.println("Khong tim thay cam bien (dia chi 0x57)!");
-    Serial.printf("Kiem tra SDA=%d, SCL=%d, VCC va GND.\n", SDA_PIN, SCL_PIN);
-    if (alertLevel == 0) showMessage("Loi cam bien!", "Kiem tra day noi");
+void onLinkRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
+  if (!linkValid(data, len, LINK_READING)) return;
+  const LinkPacket *p = (const LinkPacket *)data;
+  linkHr = p->hr;
+  linkSpo2 = p->spo2;
+  linkSensorOk = p->sensorOk;
+  lastLinkMs = millis();
+}
+
+void updateLinkStatus() {
+  bool linkAlive = lastLinkMs != 0 && millis() - lastLinkMs < LINK_TIMEOUT_MS;
+  bool ready = linkAlive && linkSensorOk;
+  if (ready == sensorReady) return;
+  sensorReady = ready;
+  if (ready) {
+    Serial.println("Da nhan du lieu tu ESP32-C3.");
+    restartSensor();
+    Serial.println("Dat ngon tay len cam bien.");
+    if (alertLevel == 0) updateDisplay();
     return;
   }
-  Serial.println("Da ket noi cam bien.");
-  restartSensor();
-  Serial.println("Dat ngon tay len cam bien.");
-  if (alertLevel == 0) updateDisplay();
+  if (!linkAlive) {
+    Serial.println("Mat ket noi ESP32-C3!");
+    if (alertLevel == 0) showMessage("Mat ket noi", "ESP32-C3");
+  } else {
+    Serial.println("ESP32-C3 khong tim thay MAX30102!");
+    if (alertLevel == 0) showMessage("Loi cam bien!", "Kiem tra ESP32-C3");
+  }
 }
 
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Wire.begin(SDA_PIN, SCL_PIN);
 
   Wire1.begin(OLED_SDA_PIN, OLED_SCL_PIN);
   display.setBusClock(400000);
   display.begin();
-  showMessage("Khoi dong...", "MAX30102");
+  showMessage("Khoi dong...", "Cho ESP32-C3");
 
   prefs.begin("oximeter", false);
 
@@ -636,9 +650,13 @@ void setup() {
   Serial.println(sdReady ? "The nho OK" : "Khong doc duoc the nho - canh bao khong co tieng");
   xTaskCreatePinnedToCore(audioTask, "audio", 8192, nullptr, 2, nullptr, 0);
 
-  Serial.println("Khoi dong cam bien MAX30102 (DFRobot SEN0344)...");
-
-  connectSensor();
+  if (!linkBegin(onLinkRecv)) {
+    Serial.println("Khoi dong ESP-NOW that bai");
+  }
+  Serial.print("Master MAC: ");
+  Serial.println(linkMac());
+  Serial.printf("Kenh ESP-NOW: %d\n", linkChannel());
+  Serial.println("Cho du lieu MAX30102 tu ESP32-C3...");
   lastReadMs = millis();
 }
 
@@ -647,8 +665,8 @@ void loop() {
   updateAudio();
   reportSensor();
 
+  updateLinkStatus();
   if (!sensorReady) {
-    if (millis() - lastSensorRetryMs >= SENSOR_RETRY_MS) connectSensor();
     delay(10);
     return;
   }
@@ -659,9 +677,8 @@ void loop() {
   }
   lastReadMs = millis();
 
-  MAX30102.getHeartbeatSPO2();
-  int hr = MAX30102._sHeartbeatSPO2.Heartbeat;
-  int spo2 = MAX30102._sHeartbeatSPO2.SPO2;
+  int hr = linkHr;
+  int spo2 = linkSpo2;
 
   bool isNewData = hr != lastRawHr || spo2 != lastRawSpo2 ||
                    millis() - lastUpdateMs >= MODULE_UPDATE_MS;
