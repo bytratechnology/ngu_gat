@@ -22,18 +22,21 @@ CALIB_FRAMES = 60
 EAR_HISTORY = 300
 
 MOUTH = [13, 14, 78, 308]
-NOSE_TIP = 1
+FOREHEAD, CHIN = 10, 152
 MAR_YAWN = 0.6
-YAWN_MIN_S = 1.5
+YAWN_MIN_S = 1.0          # mieng mo rong >= 1 s la 1 lan ngap -> bao ngay
 YAWN_WINDOW_S = 60
-HEAD_DOWN_RATIO = 0.25
-ALERT_HOLD_S = 5
 YAWN_RECENT_S = 10
+HEAD_DOWN_DEG = 45        # cui dau >= 45 do so voi tu the binh thuong -> canh bao
+HEAD_DOWN_MIN_S = 0.5
+HEAD_LOST_MAX_S = 10      # mat mat khi dang cui dau = guc dau, van canh bao toi da 10 s
+ALERT_HOLD_S = 5
 BLINK_MAX_S = 0.5
+CLOSED_ALERT_S = 2.0      # nham mat >= 2 s moi canh bao
 
 PERCLOS_WINDOW_S = 30
 HR_BASELINE_N = 20
-NO_FACE_WARN_S = 3
+NO_FACE_GRACE_S = 1.0     # mat mat qua 1 s = khong co nguoi -> dung nhan dien, tat canh bao
 
 
 HEART_RANGES = [(1, 80, 130), (3, 80, 120), (5, 75, 115), (7, 70, 110), (10, 60, 100)]
@@ -73,8 +76,8 @@ SENSOR_STATES = {-1: "Mat ket noi cam bien", 0: "Chua dat ngon tay", 1: "Dang kh
 
 def thresholds_for_age(age):
     if age is None or age < 50:
-        return {"closed_s": 1.5, "danger_s": 3.0, "perclos": 0.30, "hr_drop": 0.88}
-    return {"closed_s": 1.0, "danger_s": 2.0, "perclos": 0.25, "hr_drop": 0.92}
+        return {"closed_s": CLOSED_ALERT_S, "danger_s": 4.0, "hr_drop": 0.88}
+    return {"closed_s": CLOSED_ALERT_S, "danger_s": 3.0, "hr_drop": 0.92}
 
 
 class HeartRateLink:
@@ -202,14 +205,17 @@ class EyeTracker:
         self.threshold = EAR_DEFAULT_THRESHOLD
         self.blinks = 0
         self.was_closed = False
-        self.nose_history = collections.deque(maxlen=EAR_HISTORY)
+        self.pitch_history = collections.deque(maxlen=EAR_HISTORY)
+        self.pitch = None
 
     def process(self, frame):
         h, w = frame.shape[:2]
         res = self.mesh.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         if not res.multi_face_landmarks:
+            self.pitch = None
             return None
-        lm = np.array([(p.x * w, p.y * h) for p in res.multi_face_landmarks[0].landmark])
+        lm3 = np.array([(p.x * w, p.y * h, p.z * w) for p in res.multi_face_landmarks[0].landmark])
+        lm = lm3[:, :2]
         left, right = lm[LEFT_EYE], lm[RIGHT_EYE]
         ear = (eye_aspect_ratio(left) + eye_aspect_ratio(right)) / 2
 
@@ -231,16 +237,21 @@ class EyeTracker:
         top, bottom, lcorner, rcorner = lm[MOUTH]
         mar = np.linalg.norm(top - bottom) / max(1e-6, np.linalg.norm(lcorner - rcorner))
 
-        nose_y = lm[NOSE_TIP][1]
-        head_drop = 0.0
-        if len(self.nose_history) >= CALIB_FRAMES:
-            head_drop = (nose_y - float(np.median(self.nose_history))) / face_h
-        if head_drop < HEAD_DOWN_RATIO / 2:
-            self.nose_history.append(nose_y)
+        # Goc cui dau: truc tran -> cam nghieng ve phia sau (z tang) khi cui xuong.
+        # Tru di goc nen (tu the binh thuong) de khong phu thuoc vi tri dat camera.
+        _, fy, fz = lm3[FOREHEAD]
+        _, cy, cz = lm3[CHIN]
+        raw = float(np.degrees(np.arctan2(cz - fz, cy - fy)))
+        self.pitch = raw if self.pitch is None else 0.7 * self.pitch + 0.3 * raw
+        pitch = 0.0
+        if len(self.pitch_history) >= CALIB_FRAMES:
+            pitch = self.pitch - float(np.median(self.pitch_history))
+        if pitch < HEAD_DOWN_DEG / 2:
+            self.pitch_history.append(self.pitch)
 
         return {"box": (x0, y0, x1 - x0, face_h), "left": left, "right": right,
                 "mouth": lm[MOUTH], "ear": ear, "closed": closed, "mar": mar,
-                "head_down": head_drop > HEAD_DOWN_RATIO}
+                "pitch": pitch, "head_down": pitch >= HEAD_DOWN_DEG}
 
     @property
     def calibrating(self):
@@ -326,9 +337,9 @@ def main():
     closed_since = None
     yawn_since, yawn_counted = None, False
     yawn_times = collections.deque()
-    head_down = False
+    head_down, head_down_since, lost_head_down = False, None, False
     held_level, held_until = 0, 0.0
-    last_face = time.time()
+    last_face = 0.0
     level_sent, last_send = -1, 0.0
     frame_no = 0
 
@@ -342,18 +353,20 @@ def main():
         now = time.time()
         found = eyes_tracker.process(frame)
 
-        eyes_closed, ear, mar, yawning = None, None, 0.0, False
+        eyes_closed, ear, mar, yawning, pitch, new_yawn = None, None, 0.0, False, None, False
         if found:
-            last_face = now
+            last_face, lost_head_down = now, False
             box, ear, eyes_closed = found["box"], found["ear"], found["closed"]
-            left, right, mar, head_down = found["left"], found["right"], found["mar"], found["head_down"]
+            left, right, mar, pitch = found["left"], found["right"], found["mar"], found["pitch"]
+            head_down_since = (head_down_since or now) if found["head_down"] else None
+            head_down = head_down_since is not None and now - head_down_since >= HEAD_DOWN_MIN_S
 
             if mar > MAR_YAWN:
                 yawn_since = yawn_since or now
                 yawning = now - yawn_since >= YAWN_MIN_S
                 if yawning and not yawn_counted:
                     yawn_times.append(now)
-                    yawn_counted = True
+                    yawn_counted, new_yawn = True, True
             else:
                 yawn_since, yawn_counted = None, False
             if mar > MAR_YAWN:
@@ -371,6 +384,18 @@ def main():
                 cv2.circle(frame, (px, py), 3, mouth_color, -1)
             if eyes_tracker.calibrating:
                 eyes_closed = None
+        elif head_down:
+            lost_head_down = True
+
+        no_face_for = now - last_face
+        head_lost = lost_head_down and no_face_for <= HEAD_LOST_MAX_S
+        present = found is not None or no_face_for <= NO_FACE_GRACE_S or head_lost
+        if not present:
+            # Khong co nguoi: dung nhan dien, xoa trang thai, khong canh bao
+            eye_log.clear()
+            closed_since, yawn_since, yawn_counted = None, None, False
+            head_down, head_down_since, lost_head_down = False, None, False
+            held_level, held_until = 0, 0.0
 
         if eyes_closed is not None:
             closed_since = (closed_since or now) if eyes_closed else None
@@ -383,7 +408,6 @@ def main():
             yawn_times.popleft()
         yawns = len(yawn_times)
         yawn_recent = bool(yawn_times) and now - yawn_times[-1] < YAWN_RECENT_S
-        no_face_for = now - last_face
 
         age = ager.age()
         th = thresholds_for_age(age)
@@ -395,19 +419,15 @@ def main():
 
         conditions = [
             (3, closed_for >= th["danger_s"], f"nham mat {closed_for:.1f}s"),
-            (3, head_down and (eyes_closed or no_face_for > 0), "cui dau + nham mat"),
+            (3, head_lost, "guc dau (mat khoi camera)"),
+            (3, head_down and bool(eyes_closed), "cui dau + nham mat"),
             (3, closed_for >= th["closed_s"] and hr_low, "nham mat + nhip tim thap"),
-            (3, no_face_for > NO_FACE_WARN_S * 2, f"mat khoi camera {no_face_for:.0f}s"),
             (2, closed_for >= th["closed_s"], f"nham mat {closed_for:.1f}s"),
+            (2, head_down and not head_lost, f"cui dau {pitch or 0:.0f} do"),
             (2, yawns >= 2, f"ngap {yawns} lan/phut"),
-            (2, perclos >= th["perclos"], f"PERCLOS {perclos:.0%}"),
-            (2, hr_low and perclos >= th["perclos"] / 2, "nhip tim thap + PERCLOS"),
             (1, yawn_recent, "vua ngap"),
-            (1, perclos >= th["perclos"] / 2, f"PERCLOS {perclos:.0%}"),
             (1, hr_low, f"nhip tim thap ({hr})"),
-            (1, head_down, "cui dau"),
-            (1, no_face_for > NO_FACE_WARN_S, f"khong thay mat {no_face_for:.0f}s"),
-        ]
+        ] if present else []
         active = [(lv, why) for lv, ok, why in conditions if ok]
         level = max((lv for lv, _ in active), default=0)
         if level:
@@ -422,6 +442,9 @@ def main():
             held_level = level
         level = held_level
 
+        if new_yawn and level == 1 and level_sent == 1:
+            link.send("@ALERT,0")   # dang o muc 1 -> ha xuong roi gui lai de ESP32 phat lai cho lan ngap moi
+            level_sent = 0
         if level != level_sent or now - last_send > 1.0:
             link.send(f"@ALERT,{level}")
             if age:
@@ -438,8 +461,11 @@ def main():
             if ear is not None else "Khong thay mat",
             f"Nham mat: {closed_for:.1f}s  PERCLOS: {perclos:.0%}",
             f"MAR: {mar:.2f}  Ngap: {yawns} lan/phut{'  (DANG NGAP)' if yawning else ''}"
+            f"  Cui dau: {f'{pitch:.0f}' if pitch is not None else '--'}/{HEAD_DOWN_DEG} do"
             f"{'  CUI DAU' if head_down else ''}",
-            "Dang hieu chinh - mo mat nhin thang"
+            "Khong co nguoi - tam dung nhan dien"
+            if not present
+            else "Dang hieu chinh - mo mat nhin thang"
             if eyes_tracker.calibrating
             else ["Tinh tao", "Muc 1: Nhac nho", "Muc 2: Canh bao", "Muc 3: NGUY HIEM"][level]
             + (f" - Ly do: {reasons}" if reasons else ""),

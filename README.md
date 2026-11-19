@@ -47,11 +47,11 @@ Bỏ `--port` để chạy riêng camera. Khi chương trình camera đang chạ
 
 | Mức | Điều kiện (chỉ cần một) | Âm thanh |
 |---|---|---|
-| 1 · Nhắc nhở | Vừa ngáp · PERCLOS ≥ 15% · nhịp tim thấp · cúi đầu · không thấy mặt > 3 s | `warning1.mp3`, 1 lần |
-| 2 · Cảnh báo | Nhắm mắt ≥ 1,5 s · ngáp ≥ 2 lần/phút · PERCLOS ≥ 30% | `warning2.mp3`, lặp sau 8 s |
-| 3 · Nguy hiểm | Nhắm mắt ≥ 3 s · cúi đầu khi nhắm mắt · nhắm lâu + nhịp tim thấp · không thấy mặt > 6 s | `warning3.mp3`, lặp sau 1,5 s |
+| 1 · Nhắc nhở | Vừa ngáp (mỗi lần ngáp báo ngay) · nhịp tim thấp | `warning1.mp3`, 1 lần mỗi lần ngáp |
+| 2 · Cảnh báo | Nhắm mắt ≥ 2 s · cúi đầu ≥ 45° · ngáp ≥ 2 lần/phút | `warning2.mp3`, lặp sau 8 s |
+| 3 · Nguy hiểm | Nhắm mắt ≥ 4 s (≥ 3 s nếu từ 50 tuổi) · cúi đầu khi nhắm mắt · gục đầu mất khỏi camera · nhắm ≥ 2 s + nhịp tim thấp | `warning3.mp3`, lặp sau 1,5 s |
 
-PERCLOS là tỉ lệ thời gian nhắm mắt trong 30 giây gần nhất (không tính chớp mắt dưới 0,5 s). Nhịp tim thấp: giảm ≥ 12% so với nhịp nền (trung vị 20 lần đo đầu) hoặc dưới ngưỡng bình thường.
+Chỉ nhận diện và cảnh báo khi có người trước camera: không thấy mặt quá 1 giây thì tạm dừng, xoá trạng thái và tắt cảnh báo (trừ khi đang cúi đầu rồi mất mặt, coi là gục đầu, vẫn cảnh báo tối đa 10 s). Góc cúi đầu tính so với tư thế bình thường lúc mới ngồi vào, nên phải nhìn thẳng vài giây đầu. PERCLOS (tỉ lệ thời gian nhắm mắt trong 30 giây) chỉ hiển thị, không dùng để cảnh báo. Nhịp tim thấp: giảm ≥ 12% so với nhịp nền (trung vị 20 lần đo đầu) hoặc dưới ngưỡng bình thường.
 
 ## Giao thức Serial
 
